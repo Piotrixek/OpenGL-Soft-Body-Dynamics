@@ -16,6 +16,7 @@
 #include "Globals.h"
 #include "SoftBody.h"
 #include "Cube.h"
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     if (!glfwInit()) return -1;
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -31,6 +32,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     unsigned int skyVAO, skyVBO;
     float skyVertices[] = { -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
     glGenVertexArrays(1, &skyVAO);
@@ -40,6 +42,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     glBufferData(GL_ARRAY_BUFFER, sizeof(skyVertices), skyVertices, GL_STATIC_DRAW);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+
     unsigned int skyShader = loadShader("shaders/sky.vert", "shaders/sky.frag");
     if (!skyShader) {
         std::cerr << "Critical shader load error!\n";
@@ -52,8 +55,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         glfwTerminate();
         return -1;
     }
+
     SoftBody softBody;
     Cube cube;
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -64,6 +69,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    static glm::vec3 prevExternalPos(2.0f, 1.0f, 0.0f);
+    static glm::vec3 prevExternalRot(0.0f, 0.0f, 0.0f);
+
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
@@ -73,7 +82,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glm::mat4 projection = camera.getProjectionMatrix(1280.0f / 720.0f);
         glm::mat4 view = camera.getViewMatrix();
-        glm::mat4 model = glm::mat4(1.0f);
+
         glDisable(GL_DEPTH_TEST);
         glUseProgram(skyShader);
         glBindVertexArray(skyVAO);
@@ -84,19 +93,45 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         int viewLoc = glGetUniformLocation(softBodyShader, "view");
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, &projection[0][0]);
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &view[0][0]);
-        model = glm::mat4(1.0f);
         int modelLoc = glGetUniformLocation(softBodyShader, "model");
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
-        softBody.update(deltaTime);
-        softBody.draw();
-        model = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 1.0f, 0.0f));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
-        cube.draw();
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::Begin("Controls");
+        static bool pauseSimulation = false;
+        ImGui::Checkbox("Pause Soft Body", &pauseSimulation);
+        static float softBodyPos[3] = { 2.0f, 1.0f, 0.0f };
+        ImGui::SliderFloat3("Soft Body Position", softBodyPos, -10.0f, 10.0f);
+        static float softBodyRot[3] = { 0.0f, 0.0f, 0.0f };
+        ImGui::SliderFloat3("Soft Body Rotation", softBodyRot, 0.0f, 360.0f);
+        static float softBodyScale[3] = { 1.0f, 1.0f, 1.0f };
+        ImGui::SliderFloat3("Soft Body Scale", softBodyScale, 0.1f, 5.0f);
         ImGui::End();
+
+        glm::vec3 currentExternalPos(softBodyPos[0], softBodyPos[1], softBodyPos[2]);
+        glm::vec3 posImpulse = (currentExternalPos - prevExternalPos) * 5.0f;
+        softBody.applyExternalImpulse(posImpulse);
+        prevExternalPos = currentExternalPos;
+
+        glm::vec3 currentExternalRot(softBodyRot[0], softBodyRot[1], softBodyRot[2]);
+        glm::vec3 rotImpulse = (currentExternalRot - prevExternalRot) * 5.0f;
+        softBody.applyExternalRotationImpulse(rotImpulse);
+        prevExternalRot = currentExternalRot;
+
+        if (!pauseSimulation) {
+            softBody.update(deltaTime);
+        }
+
+        glm::mat4 softBodyModel = glm::mat4(1.0f);
+        softBodyModel = glm::translate(softBodyModel, glm::vec3(softBodyPos[0], softBodyPos[1], softBodyPos[2]));
+        softBodyModel = glm::rotate(softBodyModel, glm::radians(softBodyRot[0]), glm::vec3(1.0f, 0.0f, 0.0f));
+        softBodyModel = glm::rotate(softBodyModel, glm::radians(softBodyRot[1]), glm::vec3(0.0f, 1.0f, 0.0f));
+        softBodyModel = glm::rotate(softBodyModel, glm::radians(softBodyRot[2]), glm::vec3(0.0f, 0.0f, 1.0f));
+        softBodyModel = glm::scale(softBodyModel, glm::vec3(softBodyScale[0], softBodyScale[1], softBodyScale[2]));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &softBodyModel[0][0]);
+        softBody.draw();
+
         logger.draw("Application Log");
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
