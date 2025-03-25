@@ -1,3 +1,4 @@
+// SoftBody.cpp
 #include "SoftBody.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/glm.hpp>
@@ -93,6 +94,30 @@ void SoftBody::updateMesh() {
     }
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(float), vertices.data());
+}
+void SoftBody::applyExternalImpulse(const glm::vec3& impulse) {
+    for (auto& p : particles) {
+        if (!p.fixed)
+            p.velocity += impulse;
+    }
+}
+void SoftBody::applyExternalRotationImpulse(const glm::vec3& impulse) {
+    glm::vec3 center(0.0f);
+    int count = 0;
+    for (auto& p : particles) {
+        if (!p.fixed) {
+            center += p.pos;
+            count++;
+        }
+    }
+    if (count > 0)
+        center /= count;
+    for (auto& p : particles) {
+        if (!p.fixed) {
+            glm::vec3 r = p.pos - center;
+            p.velocity += glm::cross(impulse, r);
+        }
+    }
 }
 void SoftBody::update(float dt) {
     float stiffness = 500.0f;
