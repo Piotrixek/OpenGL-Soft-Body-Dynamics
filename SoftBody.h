@@ -8,6 +8,8 @@ public:
     SoftBody(int gridWidth = 10, int gridHeight = 10, float spacing = 0.5f);
     void update(float dt);
     void draw();
+    void applyExternalImpulse(const glm::vec3& impulse);
+    void applyExternalRotationImpulse(const glm::vec3& impulse);
 private:
     struct Particle {
         glm::vec3 pos;
@@ -29,4 +31,3 @@ private:
     void setupSprings();
     void updateMesh();
 };
-
